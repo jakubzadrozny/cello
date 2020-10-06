@@ -1,3 +1,5 @@
+# HELLO WORLD!
+
 <img src="src/main/webapp/images/logo-cello-color.png">
 
 # Cello [![Build Status](https://travis-ci.org/LivingComputingProject/cello.svg?branch=develop)](https://travis-ci.org/LivingComputingProject/cello.svg?branch=develop)
