@@ -183,8 +183,6 @@ public class DNACompiler {
             return;
         }
 
-
-
         JSONObject ucf_validation_map = ucfValidator.validateAllUCFCollections(ucf, _options);
         logger.info(gson.toJson(ucf_validation_map));
 
@@ -280,8 +278,8 @@ public class DNACompiler {
          */
 
         if(_options.get_circuit_type() == CircuitType.sequential) {
-            
-            
+
+
             HashMap<String, List<Integer>> initial_logics = new HashMap<>();
             int nrows = SequentialHelper.loadInitialLogicsFromTruthtable(initial_logics, get_options().get_fin_sequential_waveform());
 
@@ -728,9 +726,13 @@ public class DNACompiler {
             BuildCircuits circuit_builder = new BuildCircuits(); //base class
 
             logger.info("=========== Assignment algorithm =============");
-            
+
+            //generic algorithm. Our approach to improving scores.
+            if (_options.get_assignment_algorithm() == BuildCircuits.AssignmentAlgorithm.genetic) {
+              circuit_builder = new BuildCircuitsGenetic(_options, gate_library, roadblock);
+            }
             //default: simulated annealing. similar to hill climbing, but with a cooling schedule
-            if (_options.get_assignment_algorithm() == BuildCircuits.AssignmentAlgorithm.sim_annealing) {
+            else if (_options.get_assignment_algorithm() == BuildCircuits.AssignmentAlgorithm.sim_annealing) {
                 circuit_builder = new BuildCircuitsSimAnnealing(_options, gate_library, roadblock);
             }
             //hill climbing.  Many swaps with accept/reject based on score increase/decrease.
@@ -846,8 +848,6 @@ public class DNACompiler {
             }
         }
 
-
-
         /**
          *
          * Multiple circuits will exist:
@@ -861,6 +861,12 @@ public class DNACompiler {
 
         logger.info("best assignment score: " + String.format("%-5.4f", assigned_lcs.get(0).get_scores().get_score()));
 
+        logger.info("\n");
+        logger.info("///////////////////////////////////////////////////////////");
+        logger.info("////////   Our job here is done. Exiting Cello.   /////////");
+        logger.info("///////////////////////////////////////////////////////////\n");
+
+        System.exit(0);
 
         /**
          * Predict distributions (optional).
@@ -1894,12 +1900,10 @@ public class DNACompiler {
     private UCFAdaptor ucfAdaptor = new UCFAdaptor();
     private UCFReader ucfReader = new UCFReader();
     private UCFValidator ucfValidator = new UCFValidator();
-    
+
     private String threadDependentLoggername = String.valueOf(UUID.randomUUID());
     private Logger logger;
     private Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
 
 }
-
-
