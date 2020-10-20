@@ -88,7 +88,7 @@ public class BuildCircuitsGenetic extends BuildCircuits {
             Gate g_child = child.get_logic_gates().get(i);
             Gate g_parent = lc2.get_logic_gates().get(i);
             g_child.name = g_parent.name;
-            g_child.groupe = g_parent.group;
+            g_child.group = g_parent.group;
 
         }
 
