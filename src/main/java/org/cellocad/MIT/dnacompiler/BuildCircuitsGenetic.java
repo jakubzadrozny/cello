@@ -58,7 +58,7 @@ public class BuildCircuitsGenetic extends BuildCircuits {
 
         LogicCircuit child = new LogicCircuit(lc1);
 
-        int cutoff_point =  /* GENERATE RANDOM CUTOFF POINT */;
+        int cutoff_point = generator.nextInt(lc2.get_logic_gates().size());
 
         for (int i = cutoff_point; i < lc2.get_logic_gates().size(); i++) {
 
