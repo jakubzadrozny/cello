@@ -52,6 +52,29 @@ public class BuildCircuitsGenetic extends BuildCircuits {
         return false;
     }
 
+    private void mutate(LogicCircuit lc, Gate g) {
+
+        LinkedHashMap<String, ArrayList<Gate>> groups_of_type = get_gate_library().get_GATES_BY_GROUP().get(g.type);
+
+        ArrayList<String> group_names = new ArrayList<String>(groups_of_type.keySet());
+
+        Collections.shuffle(group_names);
+
+        for (String group_name : group_names) {
+
+            if (!currentlyAssignedGroup(lc, group_name)) {
+
+                ArrayList<Gate> gates_of_group = new ArrayList<Gate>(groups_of_type.get(group_name));
+                
+                Collections.shuffle(gates_of_group);
+
+                g.name = gates_of_group.get(0).name;
+                g.group = group_name;
+
+            }
+        }
+    }
+
     private LogicCircuit crossover(LogicCircuit lc1, LogicCircuit lc2) {
 
         Random generator = new Random();
@@ -79,33 +102,12 @@ public class BuildCircuitsGenetic extends BuildCircuits {
             g.group = "null";
 
             if (currentlyAssignedGroup(child, g_group)) {
-
-                LinkedHashMap<String, ArrayList<Gate>> groups_of_type = get_gate_library().get_GATES_BY_GROUP().get(g.type);
-
-                ArrayList<String> group_names = new ArrayList<String>(groups_of_type.keySet());
-
-                Collections.shuffle(group_names);
-
-                for (String group_name : group_names) {
-
-                    if (!currentlyAssignedGroup(lc, group_name)) {
-
-                        ArrayList<Gate> gates_of_group = new ArrayList<Gate>(groups_of_type.get(group_name));
-                        
-                        Collections.shuffle(gates_of_group);
-
-                        g.name = gates_of_group.get(0).name;
-                        g.group = group_name;
-
-                    }
-                }
+                mutate(child, g);
             }
 
             else {
-
                 g.name = g_name;
                 g.group = g_group;
-
             }
         }
 
