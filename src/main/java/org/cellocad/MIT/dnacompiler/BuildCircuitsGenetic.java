@@ -155,6 +155,7 @@ public class BuildCircuitsGenetic extends BuildCircuits {
             double worst_score = Collections.min(population).score;
             logger.info("Best score: " + String.valueOf(best_score));
             logger.info("Worst score: " + String.valueOf(worst_score));
+            logger.info("  iteration " + String.format("%4s", epoch) + ": score = " + String.format("%6.2f", best_score));
         }
 
         for (int i = 0; i < _POPULATION_SIZE; i++) {
