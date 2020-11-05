@@ -1,8 +1,10 @@
 import os,subprocess,shlex,re
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 
 algorithms = ["genetic","sim_annealing","hill_climbing"]
+test_files = ["demo_verilog.v","example1.v"]
 nb_runs = 10
 
 
@@ -12,9 +14,9 @@ def get_match(regex, s):
     r = p.match(s)
     return r.group(1)
 
-def run_test(algorithm):
-    os.chdir("demo")
-    command_line = 'mvn -f ../pom.xml -DskipTests=true -PCelloMain -Dexec.args="-verilog demo_verilog.v -assignment_algorithm '+algorithm+'"'
+def run_test(algorithm, test_file):
+    os.chdir("examples")
+    command_line = 'mvn -f ../pom.xml -DskipTests=true -PCelloMain -Dexec.args="-verilog '+test_file+' -assignment_algorithm '+algorithm+'"'
     args = shlex.split(command_line)
     r = subprocess.Popen(args, stdout=subprocess.PIPE)
     os.chdir("..")
@@ -64,24 +66,36 @@ def add_scores(l1,l2,run_nb):
 
 
 # Main
-for algorithm in algorithms:
-    print(" == "+algorithm+" ==")
-    scores_total = []
-    for i in range(nb_runs):
-        print("Run "+str(i+1))
-        r = run_test(algorithm)
-        scores = get_scores(r)
-        scores_total = add_scores(scores_total, scores, i+1)
+test_nb = 1
+pp = PdfPages("Results.pdf")
+for test_file in test_files:
+    scores_avg = []
+    diagram = plt.figure(test_nb)
+    for algorithm in algorithms:
+        print(" == "+algorithm+" ==")
+        scores_total = []
+        for i in range(nb_runs):
+            print("Run "+str(i+1))
+            r = run_test(algorithm, test_file)
+            scores = get_scores(r)
+            scores_total = add_scores(scores_total, scores, i+1)
 
-    scores_avg = [i/nb_runs for i in scores_total]
-    nb_scores = len(scores_avg)
-    x = [i for i in range(1,nb_scores+1)]
-    plt.text(nb_scores,scores_avg[nb_scores-1],scores_avg[nb_scores-1]+5,horizontalalignment='right')
-    plt.plot(x, scores_avg, label=algorithm+" algorithm")
+        scores_avg = [i/nb_runs for i in scores_total]
+        nb_scores = len(scores_avg)
+        x = [i for i in range(1,nb_scores+1)]
+        if (len(scores_avg) == 0):
+            print("No solution found !")
+            continue
 
+        last = scores_avg[nb_scores-1]
+        plt.text(nb_scores,last,last,horizontalalignment='right')
+        plt.plot(x, scores_avg, label=algorithm+" algorithm")
+    test_nb = test_nb+1
 
-plt.legend()
-plt.title('Assignment algorithms comparison ('+str(nb_runs)+' runs)')
-plt.xlabel('Iterations')
-plt.ylabel('Best score')
-plt.show()
+    plt.legend()
+    plt.title('Comparison for "'+test_file+'" ('+str(nb_runs)+' runs)')
+    plt.xlabel('Iterations')
+    plt.ylabel('Best score')
+    pp.savefig(diagram, dpi = 300, transparent = True)
+
+pp.close()
