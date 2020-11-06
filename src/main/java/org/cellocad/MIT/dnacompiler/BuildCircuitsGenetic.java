@@ -9,6 +9,8 @@ import java.util.Random;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Comparator;
+import java.util.Set;
+import java.util.HashSet;
 
 /***********************************************************************
  Synopsis    [ Template file for genetic algorithm assigning repressors to gates.]
@@ -17,25 +19,32 @@ import java.util.Comparator;
 
  ***********************************************************************/
 
-
 /**
  *
  */
 public class BuildCircuitsGenetic extends BuildCircuits {
 
-    private static final int _MAX_ATTEMPTS = 10;
+    private static final int _MAX_ATTEMPTS = 100;
     private static final int _POPULATION_SIZE = 20;
-    private static final int _NUM_EPOCHS = 20;
+    private static final int _NUM_EPOCHS = 5;
 
-    private static final Double _MUTATION_PROB = 0.3;
-    private static final Double _CROSSOVER_PROB = 0.9;
-    private static final Double _GENE_MUTATION_PROB = 0.2;
+    private static final Double _MUTATION_PROB = 0.75;
+    private static final Double _CROSSOVER_PROB = 0.5;
+    private static final Double _GENE_MUTATION_PROB = 0.3;
 
-    private static final String _MUTATION_TYPE = "plus";
+    private static final String _EVOLUTION_TYPE = "plus";
+
+    private static final Double _INVALID_SCORE = 0.0;
 
     private Random generator;
 
-    class Assignment implements Comparable<Assignment> {
+    private class NoGatesAvailableException extends Exception {
+        public NoGatesAvailableException(String msg) {
+            super(msg);
+        }
+    }
+
+    private class Assignment implements Comparable<Assignment> {
         public ArrayList<String> gates;
         public Double score;
 
@@ -92,9 +101,7 @@ public class BuildCircuitsGenetic extends BuildCircuits {
         for (int i = 0; i < _POPULATION_SIZE; i++) {
             // We may have to catch an exception here
             Assignment solution = randomSolution();
-            LogicCircuit lc = buildAndScoreCircuit(solution);
-
-            solution.score = lc.get_scores().get_score();
+            evaluateSolution(solution);
             population.add(solution);
         }
 
@@ -138,12 +145,11 @@ public class BuildCircuitsGenetic extends BuildCircuits {
                     child = mutate(child);
                 }
 
-                LogicCircuit lc = buildAndScoreCircuit(child);
-                child.score = lc.get_scores().get_score();
+                evaluateSolution(child);
                 children.set(i, child);
             }
 
-            if (_MUTATION_TYPE == "plus") {
+            if (_EVOLUTION_TYPE == "plus") {
                 population.addAll(children);
                 Collections.sort(population, Collections.reverseOrder());
                 population.subList(_POPULATION_SIZE, population.size()).clear();
@@ -158,11 +164,17 @@ public class BuildCircuitsGenetic extends BuildCircuits {
             logger.info("  iteration " + String.format("%4s", epoch) + ": score = " + String.format("%6.2f", best_score));
         }
 
-        for (int i = 0; i < _POPULATION_SIZE; i++) {
-            Assignment solution = population.get(i);
-            LogicCircuit lc = buildAndScoreCircuit(solution);
-            get_logic_circuits().add(lc);
+        int bestCircuit = 0;
+        for (int i = 1; i < _POPULATION_SIZE; i++) {
+            if (population.get(bestCircuit).score < population.get(i).score) {
+                bestCircuit = i;
+            }
         }
+
+        Assignment solution = population.get(bestCircuit);
+        LogicCircuit lc = constructCircuitFromAssignment(solution);
+        evaluateCircuit(lc);
+        get_logic_circuits().add(lc);
     }
 
     private boolean bernoulliSample(Double p) {
@@ -198,31 +210,12 @@ public class BuildCircuitsGenetic extends BuildCircuits {
         return -k - 1;
     }
 
-    private LogicCircuit buildAndScoreCircuit(Assignment solution) {
-        LogicCircuit lc = get_unassigned_lc();
-        LogicCircuitUtil.sortGatesByStage(lc);
-
-        for(Gate g: lc.get_output_gates()) {
-            Evaluate.refreshGateAttributes(g, get_gate_library());
-        }
-
-        for(int gi=0; gi<lc.get_logic_gates().size(); gi++) {
-            String gate_name = solution.gates.get(gi);
-            Gate g = lc.get_logic_gates().get(gi);
-            g.name = gate_name;
-        }
-
-        Evaluate.evaluateCircuit(lc, get_gate_library(), get_options());
-        Toxicity.evaluateCircuitToxicity(lc, get_gate_library());
-
-        return lc;
-    }
-
     private LogicCircuit initEmptyCircuit() {
         LogicCircuit lc = get_unassigned_lc();
         LogicCircuitUtil.sortGatesByStage(lc);
 
-        for(Gate g: lc.get_output_gates()) {
+        for(Gate g: lc.get_logic_gates()) {
+            g.name = null;
             Evaluate.refreshGateAttributes(g, get_gate_library());
         }
 
@@ -238,165 +231,205 @@ public class BuildCircuitsGenetic extends BuildCircuits {
         Evaluate.evaluateGate(gc, get_options());
     }
 
+    private LogicCircuit constructCircuitFromAssignment(Assignment solution) {
+        LogicCircuit lc = initEmptyCircuit();
+
+        for(int gi=0; gi<lc.get_logic_gates().size(); gi++) {
+            String name = solution.gates.get(gi);
+            Gate g = lc.get_logic_gates().get(gi);
+            assignGate(g, name);
+        }
+
+        return lc;
+    }
+
+
+    private void evaluateSolution(Assignment solution) {
+        LogicCircuit lc = constructCircuitFromAssignment(solution);
+        evaluateCircuit(lc);
+        solution.score = lc.get_scores().get_score();
+    }
+
+
+    private void evaluateCircuit(LogicCircuit lc) {
+        // Set<String> usedGroups = new HashSet<>();
+
+        // for (int i = 0; i < lc.get_logic_gates().size(); i++) {
+        //     Gate g = lc.get_logic_gates().get(i);
+        //
+        //     if (usedGroups.contains(g.group)) {
+        //         logger.info("grp used");
+        //         solution.score = _INVALID_SCORE;
+        //         return;
+        //     }
+        //     usedGroups.add(g.group);
+        //
+        //     if(get_options().is_toxicity()) {
+        //         g.set_toxtable(get_gate_library().get_GATES_BY_NAME().get(g.name).get_toxtable());
+        //         Toxicity.evaluateGateToxicity(g);
+        //         if (Toxicity.mostToxicRow(g) < get_options().get_toxicity_threshold()) {
+        //             logger.info("tox");
+        //             solution.score = _INVALID_SCORE;
+        //             return;
+        //         }
+        //     }
+        //
+        //     if(get_options().is_noise_margin()) {
+        //         if (!g.get_scores().is_noise_margin_contract()) {
+        //             logger.info("nm");
+        //             solution.score = _INVALID_SCORE;
+        //             return;
+        //         }
+        //     }
+        // }
+        //
+        // if(!get_options().is_tpmodel()) {
+        //     if(get_options().is_check_roadblocking()) {
+        //         if(get_roadblock().numberRoadblocking(lc, get_gate_library()) > 0) {
+        //             solution.score = _INVALID_SCORE;
+        //             return;
+        //         }
+        //     }
+        // }
+
+        Evaluate.evaluateCircuit(lc, get_gate_library(), get_options());
+        // Toxicity.evaluateCircuitToxicity(lc, get_gate_library());
+    }
+
+
     private Assignment mutate(Assignment parent) {
-        int broken = 0;
         Assignment child = new Assignment();
         LogicCircuit lc = initEmptyCircuit();
 
         for (int i = 0; i < parent.gates.size(); i++) {
             Gate g = lc.get_logic_gates().get(i);
             String name = parent.gates.get(i);
-            ArrayList<Gate> available_gates = getAvailableGates(g, lc);
 
-            if (!available_gates.contains(name) || bernoulliSample(_GENE_MUTATION_PROB)) {
-                if (available_gates.size() == 0) {
-                    broken = 1;
-                    break;
-                } else {
-                    int gate_idx = generator.nextInt(available_gates.size());
-                    name = available_gates.get(gate_idx).name;
+            if (bernoulliSample(_GENE_MUTATION_PROB) || !checkGateForCircuit(g, name, lc)) {
+                try {
+                    name = sampleGateForCircuit(g, lc);
+                } catch (NoGatesAvailableException e) {
+                    // logger.info("mutation broken");
+                    return randomSolution();
                 }
             }
 
             child.gates.add(name);
             assignGate(g, name);
         }
+        return child;
+    }
 
-        if (broken > 0) {
-            logger.info("mutation broken");
-            return parent;
-        } else {
-            return child;
+    private Assignment mixOnCutoffPoint(Assignment parent1, Assignment parent2, int cutoff_point) {
+        Assignment child = new Assignment();
+        LogicCircuit lc = initEmptyCircuit();
+
+        for (int i = 0; i < parent1.gates.size(); i++) {
+            String gateName1 = parent1.gates.get(i);
+            String gateName2 = parent2.gates.get(i);
+            Gate g = lc.get_logic_gates().get(i);
+
+            if (i >= cutoff_point) {
+                if (checkGateForCircuit(g, gateName2, lc)) {
+                    gateName1 = gateName2;
+                } else {
+                    try {
+                        gateName1 = sampleGateForCircuit(g, lc);
+                    } catch (NoGatesAvailableException e) {
+                        // logger.info("child broken");
+                        return randomSolution();
+                    }
+                }
+            }
+
+            assignGate(g, gateName1);
+            child.gates.add(gateName1);
         }
+
+        return child;
     }
 
     private ArrayList<Assignment> crossover(Assignment parent1, Assignment parent2) {
-        Assignment child1 = new Assignment();
-        Assignment child2 = new Assignment();
-
-        LogicCircuit lc1 = initEmptyCircuit();
-        LogicCircuit lc2 = initEmptyCircuit();
-
-        int cutoff_point = generator.nextInt(parent1.gates.size());
-
-        int broken1 = 0;
-        int broken2 = 0;
-
-        for (int i = 0; i < parent1.gates.size(); i++) {
-            String gate_name1 = parent1.gates.get(i);
-            Gate g1 = lc1.get_logic_gates().get(i);
-
-            String gate_name2 = parent2.gates.get(i);
-            Gate g2 = lc2.get_logic_gates().get(i);
-
-            if (i >= cutoff_point) {
-                String tmp = gate_name1;
-
-                ArrayList<Gate> available_gates1 = getAvailableGates(g1, lc1);
-                if (available_gates1.size() == 0) {
-                    broken1 = 1;
-                } else {
-                    if (available_gates1.contains(gate_name2)) {
-                        gate_name1 = gate_name2;
-                    } else {
-                        int gate_idx = generator.nextInt(available_gates1.size());
-                        gate_name1 = available_gates1.get(gate_idx).name;
-                    }
-                }
-
-                ArrayList<Gate> available_gates2 = getAvailableGates(g2, lc2);
-                if (available_gates2.size() == 0) {
-                    broken2 = 1;
-                } else {
-                    if (available_gates2.contains(tmp)) {
-                        gate_name2 = tmp;
-                    } else {
-                        int gate_idx = generator.nextInt(available_gates2.size());
-                        gate_name2 = available_gates2.get(gate_idx).name;
-                    }
-                }
-            }
-
-            assignGate(g1, gate_name1);
-            assignGate(g2, gate_name2);
-
-            child1.gates.add(gate_name1);
-            child2.gates.add(gate_name2);
-        }
+        int size = parent1.gates.size();
+        int margin = size / 5;
+        int cutoff_point = generator.nextInt(size - 2 * margin) + margin;
 
         ArrayList<Assignment> children = new ArrayList();
-        if (broken1 > 0) {
-            logger.info("child 1 broken");
-            children.add(parent1);
-        } else {
-            children.add(child1);
-        }
-
-        if (broken2 > 0) {
-            logger.info("child 2 broken");
-            children.add(parent2);
-        } else {
-            children.add(child2);
-        }
-
+        children.add(mixOnCutoffPoint(parent1, parent2, cutoff_point));
+        children.add(mixOnCutoffPoint(parent2, parent1, cutoff_point));
         return children;
     }
 
-    private ArrayList<Gate> getAvailableGates(Gate gc, LogicCircuit lc) {
-        ArrayList<Gate> gates_of_type = new ArrayList<Gate>(get_gate_library().get_GATES_BY_TYPE().get(gc.type).values());
-        ArrayList<Gate> available_gates = new ArrayList();
+    private boolean checkGateForCircuit(Gate gc, String name, LogicCircuit lc) {
+        //setting to null then refreshing clears the attributes assocated with the gate
+        gc.name = null;
+        Evaluate.refreshGateAttributes(gc, get_gate_library());
 
-        for (Gate libgate : gates_of_type) {
+        Gate otherGate = get_gate_library().get_GATES_BY_NAME().get(name);
 
-            //setting to null then refreshing clears the attributes assocated with the gate
-            gc.name = null;
-            Evaluate.refreshGateAttributes(gc, get_gate_library());
-
-            if (currentlyAssignedGroup(lc, libgate.group)) {
-                continue;
-            }
-
-            assignGate(gc, libgate.name);
-
-            if(get_options().is_toxicity()) {
-                gc.set_toxtable(get_gate_library().get_GATES_BY_NAME().get(gc.name).get_toxtable());
-                Toxicity.evaluateGateToxicity(gc);
-                if (Toxicity.mostToxicRow(gc) < get_options().get_toxicity_threshold()) {
-                    continue;
-                }
-            }
-
-            if(get_options().is_noise_margin()) {
-                if (!gc.get_scores().is_noise_margin_contract()) {
-                    continue;
-                }
-            }
-
-            if(!get_options().is_tpmodel()) {
-                if(get_options().is_check_roadblocking()) {
-                    if(get_roadblock().numberRoadblocking(lc, get_gate_library()) > 0) {
-                        continue;
-                    }
-                }
-            }
-
-            available_gates.add(libgate);
+        if (currentlyAssignedGroup(lc, otherGate.group)) {
+            return false;
         }
 
-        return available_gates;
+        assignGate(gc, name);
+
+        if(get_options().is_toxicity()) {
+            gc.set_toxtable(get_gate_library().get_GATES_BY_NAME().get(gc.name).get_toxtable());
+            Toxicity.evaluateGateToxicity(gc);
+            if (Toxicity.mostToxicRow(gc) < get_options().get_toxicity_threshold()) {
+                return false;
+            }
+        }
+
+        if(get_options().is_noise_margin()) {
+            if (!gc.get_scores().is_noise_margin_contract()) {
+                return false;
+            }
+        }
+
+        if(!get_options().is_tpmodel()) {
+            if(get_options().is_check_roadblocking()) {
+                if(get_roadblock().numberRoadblocking(lc, get_gate_library()) > 0) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+
+    private ArrayList<String> getAvailableGates(Gate gc, LogicCircuit lc) {
+        ArrayList<Gate> gatesOfType = new ArrayList<Gate>(get_gate_library().get_GATES_BY_TYPE().get(gc.type).values());
+        ArrayList<String> availableGateNames = new ArrayList();
+
+        for (Gate otherGate : gatesOfType) {
+            if (checkGateForCircuit(gc, otherGate.name, lc)) {
+                availableGateNames.add(otherGate.name);
+            }
+        }
+
+        return availableGateNames;
+    }
+
+
+    private String sampleGateForCircuit(Gate gc, LogicCircuit lc) throws NoGatesAvailableException {
+        ArrayList<String> availableGates = getAvailableGates(gc, lc);
+
+        if (availableGates.isEmpty()) {
+            // logger.info("no gate available");
+            throw new NoGatesAvailableException("no gate available");
+        }
+
+        int randomIdx = generator.nextInt(availableGates.size());
+        return availableGates.get(randomIdx);
     }
 
 
     private Assignment randomSolution() {
         for (int attempt=0; attempt < _MAX_ATTEMPTS; attempt++) {
             Assignment solution = new Assignment();
-
-            LogicCircuit lc = get_unassigned_lc();
-            LogicCircuitUtil.sortGatesByStage(lc);
-
-            for(Gate g: lc.get_output_gates()) {
-                Evaluate.refreshGateAttributes(g, get_gate_library());
-            }
+            LogicCircuit lc = initEmptyCircuit();
 
             int found = 1;
 
@@ -407,19 +440,16 @@ public class BuildCircuitsGenetic extends BuildCircuits {
                 */
                 Gate gc = lc.get_logic_gates().get(gi);
 
-                ArrayList<Gate> available_gates = getAvailableGates(gc, lc);
-
-                if (available_gates.isEmpty()) {
-                    logger.info("no gate available");
+                String sampledName;
+                try {
+                    sampledName = sampleGateForCircuit(gc, lc);
+                } catch(NoGatesAvailableException e) {
                     found = 0;
                     break;
                 }
 
-                int gate_idx = generator.nextInt(available_gates.size());
-                Gate selected_gate = available_gates.get(gate_idx);
-
-                assignGate(gc, selected_gate.name);
-                solution.gates.add(selected_gate.name);
+                assignGate(gc, sampledName);
+                solution.gates.add(sampledName);
             }
 
             if (found == 0) {

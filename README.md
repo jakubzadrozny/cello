@@ -1,5 +1,4 @@
-# HELLO WORLD!
-# HELLO WORLD bis !
+This is our implementation of a genetic search algorithm for the gate assignment step in the *cello* compiler.
 
 <img src="src/main/webapp/images/logo-cello-color.png">
 
